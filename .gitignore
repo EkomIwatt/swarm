@@ -1,0 +1,5 @@
+# Local, machine-specific Claude Code settings
+.claude/
+
+# Sandbox dry run (its own git repo, kept local as a reference)
+swarm-dryrun/

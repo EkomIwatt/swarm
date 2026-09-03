@@ -3,3 +3,7 @@
 
 # Sandbox dry run (its own git repo, kept local as a reference)
 swarm-dryrun/
+
+# NOTE: practice projects now live in ../PROJECTS (a sibling of Swarm on the
+# Desktop), each as its own git repo — so they are outside this repo entirely
+# and need no ignore rule here.

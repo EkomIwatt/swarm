@@ -1,45 +1,60 @@
 <#
 .SYNOPSIS
-  Bootstrap a new Swarm project as its OWN git repo under PROJECTS/.
+  Bootstrap a new Swarm project as its OWN git repo inside the projects
+  container (PORTFOLIO by default).
 
 .DESCRIPTION
-  Creates PROJECTS/<Name> as a standalone git repository with a starter
+  Creates <Container>/<Name> as a standalone git repository with a starter
   .gitignore and an initial commit, so it is ready for /swarm-initialiser.
 
   This is the step whose absence caused worktrees to be cut from the outer
   Swarm container repo (and inherit the wrong CLAUDE.md). Each project must
-  be its own repo BEFORE any `git worktree add` is run.
+  be its own repo BEFORE any `git worktree add` is run. The initial commit
+  matters just as much: a fresh `git init` leaves main UNBORN, and
+  `git worktree add ... main` then fails with "invalid reference: main".
 
   Worktrees use the SIBLING layout: after you approve the initialiser plan,
   run its `git worktree add -b instance/<x> ../<Name>-<x>` commands from
-  inside PROJECTS/<Name>, creating scratch copies at PROJECTS/<Name>-<x>.
+  inside <Container>/<Name>, creating scratch copies at <Container>/<Name>-<x>.
   /swarm-reconciler merges those branches back and the scratch dirs are removed.
 
 .PARAMETER Name
-  Project name. Becomes the folder PROJECTS/<Name> and the repo root.
+  Project name. Becomes the folder <Container>/<Name> and the repo root.
+
+.PARAMETER Container
+  Name of the projects container folder, a SIBLING of the Swarm folder.
+  Defaults to PORTFOLIO. Created if it does not exist.
 
 .EXAMPLE
-  .\new-swarm-project.ps1 -Name Snipp
-  cd ".\PROJECTS\Snipp"
+  .\new-swarm-project.ps1 -Name Frame
+  cd "..\PORTFOLIO\Frame"
   claude   # then run: /swarm-initialiser <your brief>
+
+.EXAMPLE
+  # Build into a differently named container:
+  .\new-swarm-project.ps1 -Name Frame -Container PROJECTS
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidatePattern('^[A-Za-z0-9._-]+$')]
-    [string]$Name
+    [string]$Name,
+
+    [ValidatePattern('^[A-Za-z0-9._-]+$')]
+    [string]$Container = 'PORTFOLIO'
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Swarm root = the folder this script lives in. PROJECTS lives NEXT TO Swarm
-# (sibling on the Desktop), not inside it, so project repos never tangle with
-# the Swarm container repo.
+# Swarm root = the folder this script lives in. The container lives NEXT TO
+# Swarm (sibling on the Desktop), not inside it, so project repos never tangle
+# with the Swarm container repo. Note this is derived from the SCRIPT's
+# location, not your current directory, so cwd does not affect where we build.
 $swarmRoot   = $PSScriptRoot
-$projectsDir = Join-Path (Split-Path $swarmRoot -Parent) 'PROJECTS'
+$projectsDir = Join-Path (Split-Path $swarmRoot -Parent) $Container
 $projectPath = Join-Path $projectsDir $Name
 
-# Ensure PROJECTS/ exists.
+# Ensure the container exists.
 if (-not (Test-Path $projectsDir)) {
     New-Item -ItemType Directory -Path $projectsDir | Out-Null
 }
@@ -48,7 +63,7 @@ if (-not (Test-Path $projectsDir)) {
 if (Test-Path $projectPath) {
     $existing = Get-ChildItem -Force $projectPath -ErrorAction SilentlyContinue
     if ($existing) {
-        Write-Error "PROJECTS\$Name already exists and is not empty. Pick another name or remove it first."
+        Write-Error "$Container\$Name already exists and is not empty. Pick another name or remove it first."
         return
     }
 } else {
@@ -97,15 +112,19 @@ git -C $projectPath init -b main | Out-Null
 git -C $projectPath add .gitignore README.md
 git -C $projectPath commit -m "Initialize $Name project repo" | Out-Null
 
-# Sanity: the project's repo root must be the project folder, NOT the Swarm container.
-$top = (git -C $projectPath rev-parse --show-toplevel).Trim()
+# Sanity: the project's repo root must be the project folder, NOT the Swarm
+# container, and main must now be a real ref (worktrees need both).
+$top      = (git -C $projectPath rev-parse --show-toplevel).Trim()
+$mainRef  = (git -C $projectPath rev-parse --short main).Trim()
 
 Write-Host ""
 Write-Host "Created project repo:" -ForegroundColor Green
 Write-Host "  $top"
+Write-Host "  main -> $mainRef  (born; worktrees will resolve)"
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  cd `"$projectPath`""
+Write-Host "  gh repo create $Name --private --source=. --remote=origin --push"
 Write-Host "  claude"
 Write-Host "  # then run:  /swarm-initialiser <your project brief>"
 Write-Host ""
